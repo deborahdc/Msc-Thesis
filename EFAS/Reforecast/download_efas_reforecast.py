@@ -23,8 +23,8 @@ def retrieve_efas_seasonal_reforecast(year, month, output_folder):
             'leadtime_hour': leadtimes,
             'format': 'netcdf4.zip',
             'area': [
-                47.5, 40, 44,
-                43.5,
+                43.5, 40, 40,
+                47.5,
             ],
         },
         output_zip_path)  # Save file in specified directory
@@ -43,12 +43,20 @@ def retrieve_efas_seasonal_reforecast(year, month, output_folder):
             break
 
 def main():
-    year = input("Enter the year (e.g., 1995): ")
-    month = input("Enter the month (e.g., 05 for May): ")
-    output_folder = r"C:\Users\dottacor\OneDrive - Stichting Deltares\Documents\Git\Msc-Thesis\EFAS\Reforecast"  # Specify output folder here
+    start_year = int(input("Enter the start year (e.g., 1995): "))
+    end_year = int(input("Enter the end year (e.g., 2020): "))
+    start_month = int(input("Enter the start month (e.g., 5 for May): "))
+    end_month = int(input("Enter the end month (e.g., 9 for September): "))
+    output_folder = r"C:\Users\dottacor\Documents2\GitFiles\EFAS_Georgia"  # Specify output folder here
 
-    retrieve_efas_seasonal_reforecast(year, month, output_folder)
+    for year in range(start_year, end_year + 1):
+        for month in range(start_month, end_month + 1):
+            month_str = f'{month:02d}'  # Format month as two digits
+            print(f"Processing year {year}, month {month_str}...")
+            retrieve_efas_seasonal_reforecast(year, month_str, output_folder)
 
 if __name__ == "__main__":
     main()
+
+
 #%%
