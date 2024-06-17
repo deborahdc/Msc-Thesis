@@ -1,0 +1,2 @@
+always copy and past dates from xlsx to csv to keep format
+run py file always with the csv

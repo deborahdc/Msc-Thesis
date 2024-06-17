@@ -32,7 +32,7 @@ logging.info('Initiating logging. Please note that date/time stamps within log f
 logging.debug('Running script as user '+os.getlogin())
 
 #%% Create dataframe containing all workflows and time0 combinations
-my_tasks = pd.read_csv('create_taskProperties.csv',parse_dates=True)
+my_tasks = pd.read_csv('create_taskProperties _deborah.csv',parse_dates=True)
 my_tasks['time0'] = pd.to_datetime(my_tasks['time0'],format='%d/%m/%Y %H:%M:%S')
 my_tasks['coldState_fixedStartTime'] = pd.to_datetime(my_tasks['coldState_fixedStartTime'],format='%d/%m/%Y %H:%M:%S')
 logging.info('csv file with tasks has been imported into dataframe')
