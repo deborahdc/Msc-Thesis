@@ -1,226 +1,126 @@
-#%%# Developed by Deborah Dotta, June 2024
+#%% Developed by Deborah Dotta, June 2024
 import netCDF4 as nc
 import numpy as np
-import matplotlib.pyplot as plt
-from datetime import datetime
 import os
 import logging
+from datetime import datetime
 from glob import glob
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def find_closest_lat_lon(latitudes, longitudes, discharges, point_lat, point_lon):
+def find_closest_lat_lon(latitudes, longitudes, point_lat, point_lon):
     """
-    Find the index of the closest spatial point to the given latitude and longitude,
-    and ensure it has the highest discharge value in the neighborhood.
+    Find the index of the closest spatial point to the given latitude and longitude.
     """
     lat_diff = np.abs(latitudes - point_lat)
     lon_diff = np.abs(longitudes - point_lon)
-    min_lat_idx, min_lon_idx = np.unravel_index((lat_diff + lon_diff).argmin(), latitudes.shape)
     
-    # Consider a 3x3 grid around the closest point
-    lat_indices = np.clip([min_lat_idx-1, min_lat_idx, min_lat_idx+1], 0, latitudes.shape[0]-1)
-    lon_indices = np.clip([min_lon_idx-1, min_lon_idx, min_lon_idx+1], 0, longitudes.shape[1]-1)
+    combined_diff = np.sqrt(lat_diff**2 + lon_diff**2)
+    min_idx = np.unravel_index(combined_diff.argmin(), combined_diff.shape)
     
-    max_value = -np.inf
-    best_lat_idx = min_lat_idx
-    best_lon_idx = min_lon_idx
-    
-    for lat_idx in lat_indices:
-        for lon_idx in lon_indices:
-            value = discharges[lat_idx, lon_idx]
-            if value > max_value:
-                max_value = value
-                best_lat_idx = lat_idx
-                best_lon_idx = lon_idx
-    
-    return best_lat_idx, best_lon_idx
-
-def haversine(lat1, lon1, lat2, lon2):
-    """
-    Calculate the great-circle distance between two points on the Earth using the Haversine formula.
-    """
-    R = 6371e3  # Earth radius in meters
-    phi1 = np.radians(lat1)
-    phi2 = np.radians(lat2)
-    delta_phi = np.radians(lat2 - lat1)
-    delta_lambda = np.radians(lon2 - lon1)
-
-    a = np.sin(delta_phi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(delta_lambda / 2) ** 2
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-
-    return R * c
+    return min_idx
 
 def extract_forecast_data(file_path, point_lat, point_lon):
     """
     Extract forecast data from the NetCDF file.
     """
-    with nc.Dataset(file_path) as ds:
-        latitudes = ds.variables['latitude'][:]
-        longitudes = ds.variables['longitude'][:]
-        dis24 = ds.variables['dis24'][:, :, :, :]
-        
-        # Log dataset resolution and grid details
-        lat_resolution = np.abs(latitudes[1] - latitudes[0])
-        lon_resolution = np.abs(longitudes[1] - longitudes[0])
-        logger.info(f"Latitude resolution: {lat_resolution} degrees, Longitude resolution: {lon_resolution} degrees")
-        logger.info(f"Latitude range: {latitudes.min()} to {latitudes.max()}")
-        logger.info(f"Longitude range: {longitudes.min()} to {longitudes.max()}")
-        
-        # Find the nearest point with the highest discharge value
-        lat_idx, lon_idx = find_closest_lat_lon(latitudes, longitudes, dis24[0, 0], point_lat, point_lon)
-        
-        # Print the actual lat and lon used
-        actual_lat = latitudes[lat_idx, lon_idx]
-        actual_lon = longitudes[lat_idx, lon_idx]
-        logger.info(f"Actual latitude used: {actual_lat}, Actual longitude used: {actual_lon}")
-        
-        # Calculate the distance difference in meters
-        distance_diff = haversine(point_lat, point_lon, actual_lat, actual_lon)
-        logger.info(f"Distance from original point: {distance_diff:.2f} meters")
-        
-        dis24 = ds.variables['dis24'][:, :, lat_idx, lon_idx]
-        step = ds.variables['step'][:]
-        ensemble = ds.variables['number'][:]
-        valid_time_units = ds.variables['valid_time'].units
-        valid_time_values = ds.variables['valid_time'][:]
-        # Convert valid_time to datetime
-        time = nc.num2date(valid_time_values, units=valid_time_units, calendar='proleptic_gregorian')
-        # Convert cftime to datetime using list comprehension
-        time = [datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in time]
-        return dis24, step, ensemble, time, actual_lat, actual_lon
+    try:
+        with nc.Dataset(file_path) as ds:
+            latitudes = ds.variables['latitude'][:]
+            longitudes = ds.variables['longitude'][:]
+            
+            try:
+                lat_idx = np.where(latitudes == point_lat)[0][0]
+                lon_idx = np.where(longitudes == point_lon)[0][0]
+                exact_match = True
+            except IndexError:
+                exact_match = False
+                lat_idx, lon_idx = find_closest_lat_lon(latitudes, longitudes, point_lat, point_lon)
+            
+            actual_lat = latitudes[lat_idx] if np.ndim(latitudes) == 1 else latitudes[lat_idx, lon_idx]
+            actual_lon = longitudes[lon_idx] if np.ndim(longitudes) == 1 else longitudes[lat_idx, lon_idx]
+            
+            if exact_match:
+                logger.info(f"Exact point found. Latitude: {actual_lat}, Longitude: {actual_lon}")
+            else:
+                logger.warning(f"Exact point not found. Closest point used. Latitude: {actual_lat}, Longitude: {actual_lon}")
+            
+            dis24 = ds.variables['dis24'][:, :, lat_idx, lon_idx]
+            step = ds.variables['step'][:]
+            ensemble = ds.variables['number'][:]
+            valid_time_units = ds.variables['valid_time'].units
+            valid_time_values = ds.variables['valid_time'][:]
+            # Convert valid_time to datetime
+            time = nc.num2date(valid_time_values, units=valid_time_units, calendar='proleptic_gregorian')
+            # Convert cftime to datetime using list comprehension
+            time = [datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in time]
+            
+            return dis24, step, ensemble, time, actual_lat, actual_lon
+    except OSError as e:
+        logger.error(f"Error reading file {file_path}: {e}")
+        return None, None, None, None, None, None
 
-def write_forecast_to_file(fcst_filename, forecast_data, forecast_steps, forecast_times):
+def write_forecast_to_file(fcst_filename, forecast_data_list, forecast_steps_list, forecast_times_list):
     """
     Write forecast data to a .fcst file.
     """
-    num_time_steps = forecast_steps.size
-    num_ensemble_members = forecast_data.shape[0]
-
     with open(fcst_filename, 'w') as fcst_file:
-        for time_step in range(num_time_steps):
-            leadtime_hours = int(forecast_steps[time_step])
-            forecast_date = forecast_times[time_step]
-            date_str = forecast_date.strftime('%Y%m%d%H')
+        for forecast_data, forecast_steps, forecast_times in zip(forecast_data_list, forecast_steps_list, forecast_times_list):
+            if forecast_data is None:
+                continue
+            num_time_steps = forecast_steps.size
+            num_ensemble_members = forecast_data.shape[0]
 
-            logger.info(f"Processing time step: {time_step}, Lead time (hours): {leadtime_hours}, Forecast date: {forecast_date}")
+            for time_step in range(num_time_steps):
+                leadtime_hours = int(forecast_steps[time_step])
+                forecast_date = forecast_times[time_step]
+                date_str = forecast_date.strftime('%Y%m%d%H')
 
-            forecasts = ' '.join(f'{forecast_data[ensemble_member, time_step]:.1f}' for ensemble_member in range(num_ensemble_members))
-            fcst_file.write(f"{date_str} {leadtime_hours} {forecasts}\n")
-
-def plot_percentiles(times, forecast_data_list, output_filename, basin_name):
-    """
-    Plot the ensemble members for different months with percentiles and mean.
-    """
-    fig, axes = plt.subplots(4, 3, figsize=(18, 24), sharey=True)
-    plt.rcParams["font.family"] = "Calibri"
-
-    months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-
-    for i, ax in enumerate(axes.flatten()):
-        forecast_data = forecast_data_list[i]
-        time = times[i]
-        
-        # Calculate percentiles
-        p30 = np.percentile(forecast_data, 30, axis=0)
-        p70 = np.percentile(forecast_data, 70, axis=0)
-        p10 = np.percentile(forecast_data, 10, axis=0)
-        p90 = np.percentile(forecast_data, 90, axis=0)
-        mean = np.mean(forecast_data, axis=0)
-        
-        ax.fill_between(time, p30, p70, color='skyblue', alpha=0.6, label='30-70th Percentile')
-        ax.fill_between(time, p10, p90, color='#66b3ff', alpha=0.3, label='10-90th Percentile')
-        ax.plot(time, mean, color='#0059b3', label='Ensemble Mean', linewidth=2)
-        
-        ax.set_title(f"01 {months[i]} {time[0].year}")
-        ax.set_xlabel("Time (days)")
-        ax.set_ylabel("Discharge (m³/s)")
-        ax.grid(True)
-        
-    fig.suptitle(f"Seasonal Reforecast - EFAS for {basin_name}", fontsize=16)
-    handles, labels = ax.get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper center', fontsize='small', ncol=3)
-
-    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-    plt.savefig(output_filename, bbox_inches='tight')
-    plt.show()
-
-def plot_ensemble_members(times, forecast_data_list, output_filename, basin_name):
-    """
-    Plot the ensemble members for different months.
-    """
-    fig, axes = plt.subplots(4, 3, figsize=(18, 24), sharey=True)
-    plt.rcParams["font.family"] = "Calibri"
-
-    colors = plt.cm.get_cmap('tab20', 25)
-    months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-
-    for i, ax in enumerate(axes.flatten()):
-        forecast_data = forecast_data_list[i]
-        time = times[i]
-        for member in range(forecast_data.shape[0]):
-            ax.plot(time, forecast_data[member, :], color=colors(member), linewidth=1)
-        ax.set_title(f"01 {months[i]} {time[0].year}")
-        ax.set_xlabel("Time (days)")
-        ax.set_ylabel("Discharge (m³/s)")
-        ax.grid(True)
-        
-    fig.suptitle(f"Seasonal Reforecast - EFAS for {basin_name}", fontsize=16)
-    handles = [plt.Line2D([0, 1], [0, 1], color=colors(i), lw=2) for i in range(forecast_data.shape[0])]
-    labels = [f'Ensemble Member {i+1}' for i in range(forecast_data.shape[0])]
-    fig.legend(handles, labels, loc='upper center', fontsize='small', ncol=5)
-
-    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-    plt.savefig(output_filename, bbox_inches='tight')
-    plt.show()
+                forecasts = ' '.join(f'{forecast_data[ensemble_member, time_step]:.1f}' for ensemble_member in range(num_ensemble_members))
+                fcst_file.write(f"{date_str} {leadtime_hours} {forecasts}\n")
 
 def main():
     # Define file paths and parameters
     data_directory = r"C:\Users\dottacor\Documents2\GitFiles\EFAS_Georgia"
-    year = 2009
-    point_lat = 42.05 
-    point_lon = 44.97 
+    start_year = 1991
+    end_year = 2018
+    point_lat = 41.998
+    point_lon = 45.582
     basin_name = "Alazani Basin - Shakriani Hydrological Station"
-    destination_path = r"C:\Users\dottacor\Documents2\GitFiles\EFAS_Georgia"
+    destination_path = r"C:\Users\dottacor\Documents2\GitFiles\EFAS_Georgia\merged"
     
-    forecast_data_list = []
-    times = []
+    all_forecast_data_list = []
+    all_forecast_steps_list = []
+    all_forecast_times_list = []
     
-    # Process each month's file
-    for month in range(1, 13):
-        file_pattern = os.path.join(data_directory, f"{year}{month:02d}_EFAS_seasonal_reforecast.nc")
-        file_path = glob(file_pattern)[0]
-        
-        # Extract forecast data
-        forecast_data, forecast_steps, ensemble_members, forecast_times, actual_lat, actual_lon = extract_forecast_data(file_path, point_lat, point_lon)
-        logger.info(f"Forecast data dimensions for {month:02d}/{year}: {forecast_data.shape}")
-        logger.info(f"Number of time steps: {forecast_steps.size}, Number of ensemble members: {ensemble_members.size}")
-        logger.info(f"Actual latitude used: {actual_lat}, Actual longitude used: {actual_lon}")
-        
-        forecast_data_list.append(forecast_data)
-        times.append(forecast_times)
-        
-        # Write forecast data to .fcst file
-        file_basename = f"{basin_name}_reforecast_efas_{year}{month:02d}"
-        fcst_filename = os.path.join(destination_path, f"{file_basename}.fcst")
-        write_forecast_to_file(fcst_filename, forecast_data, forecast_steps, forecast_times)
-        logger.info(f"Forecast data written to {fcst_filename}")
+    # Process each year's files
+    for year in range(start_year, end_year + 1):
+        for month in range(1, 13):
+            file_pattern = os.path.join(data_directory, f"{year}{month:02d}_EFAS_seasonal_reforecast.nc")
+            files_found = glob(file_pattern)
+            if files_found:
+                file_path = files_found[0]
+                # Extract forecast data
+                forecast_data, forecast_steps, ensemble_members, forecast_times, actual_lat, actual_lon = extract_forecast_data(file_path, point_lat, point_lon)
+                if forecast_data is not None:
+                    logger.info(f"Forecast data dimensions for {month:02d}/{year}: {forecast_data.shape}")
+                    logger.info(f"Number of time steps: {forecast_steps.size}, Number of ensemble members: {ensemble_members.size}")
+                    logger.info(f"Actual latitude used: {actual_lat}, Actual longitude used: {actual_lon}")
+                    
+                    all_forecast_data_list.append(forecast_data)
+                    all_forecast_steps_list.append(forecast_steps)
+                    all_forecast_times_list.append(forecast_times)
+            else:
+                logger.warning(f"No files found for pattern: {file_pattern}")
     
-    # Plot ensemble members with percentiles and mean
-    plot_filename_percentiles = os.path.join(destination_path, f"{basin_name}_reforecast_efas_{year}_percentiles.png")
-    plot_percentiles(times, forecast_data_list, plot_filename_percentiles, basin_name)
-    logger.info(f"Ensemble members plot saved as {plot_filename_percentiles}")
-    
-    # Plot ensemble members
-    plot_filename_ensemble = os.path.join(destination_path, f"{basin_name}_reforecast_efas_{year}_ensemble.png")
-    plot_ensemble_members(times, forecast_data_list, plot_filename_ensemble, basin_name)
-    logger.info(f"Ensemble members plot saved as {plot_filename_ensemble}")
+    # Write all forecast data to a single .fcst file
+    fcst_filename = os.path.join(destination_path, f"{basin_name}_reforecast_efas_{start_year}_{end_year}.fcst")
+    write_forecast_to_file(fcst_filename, all_forecast_data_list, all_forecast_steps_list, all_forecast_times_list)
+    logger.info(f"All forecast data written to {fcst_filename}")
 
 if __name__ == "__main__":
     main()
-
-
 
 #%%

@@ -1,4 +1,4 @@
-# Developed by Deborah Dotta, February 2024
+#%% Developed by Deborah Dotta, February 2024
 
 import datetime as dt
 from pathlib import Path
@@ -64,3 +64,4 @@ for year in range(start_year, end_year + 1):
         download_data_for_month(year, month, 6, ['2m_temperature'], '6h')
 
 logging.info("All downloads completed.")
+#%%

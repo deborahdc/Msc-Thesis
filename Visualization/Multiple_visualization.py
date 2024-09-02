@@ -10,7 +10,7 @@ import pickle
 data_file_path = r"C:\Users\dottacor\Documents2\GitFiles\SEASHYPE_reforecast_data\TheNetherlands\whole_period_joined.fcst"
 pickle_file_path = r"C:\Users\dottacor\Documents2\GitFiles\SEASHYPE_reforecast_data\TheNetherlands\processed_data.pkl"
 
-#%% Read and process data if pickle file doesn't exist
+# Read and process data if pickle file doesn't exist
 if not os.path.exists(pickle_file_path):
     # Read the data into a pandas DataFrame
     df = pd.read_csv(data_file_path, delim_whitespace=True, header=None)
@@ -22,13 +22,12 @@ if not os.path.exists(pickle_file_path):
     # Save the processed DataFrame to a pickle file
     with open(pickle_file_path, 'wb') as f:
         pickle.dump(df, f)
-
 else:
     # Load the processed DataFrame from the pickle file
     with open(pickle_file_path, 'rb') as f:
         df = pickle.load(f)
 
-#%% Define function to plot percentiles
+# Define function to plot percentiles
 def plot_percentiles(start_date, ax):
     start_leadtime = 24
     num_days = 91  # Number of days to display
@@ -85,7 +84,7 @@ def plot_percentiles(start_date, ax):
     if start_date == start_dates[0]:
         ax.legend(loc='upper right')
 
-#%% Define function to plot single runs
+# Define function to plot single runs
 def plot_single_runs(start_date, ax):
     start_leadtime = 24
     num_days = 91  # Number of days to display
@@ -136,9 +135,10 @@ def plot_single_runs(start_date, ax):
         ax.plot([], [], color='gray', label='25 Models')
         ax.legend(loc='upper right')
 
-#%% Plot multiple graphs in two grids
+# Plot multiple graphs in two grids
 output_dir = r"C:\Users\dottacor\Documents2\GitFiles\Visualization_plots\Netherlands"
-start_dates = [f'2013-{month:02d}-01 00:00' for month in range(1, 13)]
+selected_year = 2003
+start_dates = [f'{selected_year}-{month:02d}-01 00:00' for month in range(1, 13)]
 
 # Plot percentiles
 fig, axes = plt.subplots(nrows=4, ncols=3, figsize=(18, 24))
@@ -149,7 +149,7 @@ for i, start_date in enumerate(start_dates):
     plot_percentiles(start_date, axes[i])
 
 # Save the large percentiles plot
-output_file_percentiles = os.path.join(output_dir, "year_visualization_percentiles.png")
+output_file_percentiles = os.path.join(output_dir, f"{selected_year}_visualization_percentiles.png")
 plt.savefig(output_file_percentiles, bbox_inches='tight')
 
 # Show the large percentiles plot (optional)
@@ -164,12 +164,11 @@ for i, start_date in enumerate(start_dates):
     plot_single_runs(start_date, axes[i])
 
 # Save the large single runs plot
-output_file_single_runs = os.path.join(output_dir, "year_visualization_single_runs.png")
+output_file_single_runs = os.path.join(output_dir, f"{selected_year}_visualization_single_runs.png")
 plt.savefig(output_file_single_runs, bbox_inches='tight')
 
 # Show the large single runs plot (optional)
 plt.show()
-
 
 
 #%%
